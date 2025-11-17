@@ -1,0 +1,405 @@
+class RGBPixel():
+    def __init__(self, r: int, g: int, b: int):
+        self.r = r
+        self.g = g
+        self.b = b
+
+    def toRGBA(self, a: int = 255):
+        return RGBAPixel(self.r, self.g, self.b, a)
+    
+    def toTuple(self) -> tuple:
+        return (self.r, self.g, self.b)
+
+class RGBAPixel():
+    def __init__(self, r: int, g: int, b: int, a: int = 255):
+        self.r = r
+        self.g = g
+        self.b = b
+        self.a = a
+
+    def toRGB(self) -> RGBPixel:
+        return RGBPixel(self.r, self.g, self.b)
+
+    def toRGBRespectingAlpha(self) -> RGBPixel:
+        alpha = self.a / 255.0
+        r = int(self.r * alpha)
+        g = int(self.g * alpha)
+        b = int(self.b * alpha)
+        return RGBPixel(r, g, b)
+
+    def toTuple(self) -> tuple:
+        return (self.r, self.g, self.b, self.a)
+
+
+def blendRGBAs(pixels: list) -> RGBAPixel:
+    r_accum, g_accum, b_accum = 0, 0, 0
+    alpha_accum = 0
+
+    for pixel in reversed(pixels):
+        alpha = pixel.a / 255.0
+        r_accum = int(pixel.r * alpha + r_accum * (1 - alpha))
+        g_accum = int(pixel.g * alpha + g_accum * (1 - alpha))
+        b_accum = int(pixel.b * alpha + b_accum * (1 - alpha))
+        alpha_accum += alpha * (1 - alpha_accum)
+
+        if alpha_accum >= 1.0:
+            break
+
+    return RGBAPixel(r_accum, g_accum, b_accum, 255)
+
+
+def blendRGBs(pixels: list) -> RGBPixel:
+    return [pixel.toRGBA(255) for pixel in pixels]
+
+class BlendingLayeredPixelBuffer():
+    # 2D grid of layer-array of RGBAPixel objects.
+
+    def __init__(self, width: int, height: int):
+        self.width = width
+        self.height = height
+        self.clear()
+
+    def clear(self):
+        self.buffer = []
+        for y in range(self.height):
+            row = []
+            for x in range(self.width):
+                layers = [
+                    RGBAPixel(0, 0, 0, 255)  # Opaque black pixel
+                ]
+                row.append(layers)
+            self.buffer.append(row)
+
+    # Method to get the blended pixel at (x, y) as RGBAPixel
+    def getPixel(self, x: int, y: int) -> RGBAPixel:
+        layers = self.buffer[y][x]
+        return blendRGBAs(layers)
+
+    # Method to set the pixel layer at (x, y) with a list of RGBAPixel
+    def setPixelLayer(self, x: int, y: int, pixels: list):
+        self.buffer[y][x] = pixels
+
+    # Method to collapse a pixel effectively turning [(...),...] to [(...)]
+    def collapsePixel(self, x: int, y: int):
+        blendedPixel = self.getPixel(x, y)
+        self.setPixelLayer(x, y, [blendedPixel])
+
+    # Method to get a pixel layer as [RGBAPixel, ...]
+    def getPixelLayers(self, x: int, y: int) -> list:
+        return self.buffer[y][x]
+
+    # Method to set a pixel layer at (x, y) with RGBAPixel
+    def setPixelAtLayer(self, x: int, y: int, layerIndex: int, pixel: RGBAPixel):
+        layers = self.buffer[y][x]
+        if layerIndex < len(layers):
+            layers[layerIndex] = pixel
+        else:
+            # Extend layers if necessary
+            while len(layers) < layerIndex:
+                layers.append(RGBAPixel(0, 0, 0, 0))  # Transparent pixel
+            layers.append(pixel)
+
+    # Method to append a pixel layer at (x, y) with RGBAPixel
+    def appendToPixelLayer(self, x: int, y: int, pixel: RGBAPixel):
+        layers = self.buffer[y][x]
+        layers.append(pixel)
+
+    # Method to get the depth of a pixel at (x, y)
+    def getPixelDepth(self, x: int, y: int) -> int:
+        layers = self.buffer[y][x]
+        return len(layers)
+
+    # Method to get the pixel of a specific layer at (x, y), returns None if layer does not exist
+    def getPixelAtLayer(self, x: int, y: int, layerIndex: int) -> RGBAPixel | None:
+        layers = self.buffer[y][x]
+        if layerIndex < len(layers):
+            return layers[layerIndex]
+        return None
+
+    # Method to check if a pixel-layer has a layer-index
+    def pixelLayerHasIndex(self, x: int, y: int, layerIndex: int) -> bool:
+        layers = self.buffer[y][x]
+        return layerIndex < len(layers)
+
+    # Method to remove a pixel layer at (x, y) by layer_index, returns false if layer does not exist else true
+    def removePixelAtLayer(self, x: int, y: int, layerIndex: int):
+        exists = self.pixelLayerHasIndex(x, y, layerIndex)
+        if exists:
+            layers = self.buffer[y][x]
+            del layers[layerIndex]
+        return exists
+
+    # Method to get the entire buffer as a 2D array of collapsed RGBAPixel objects
+    def getCollapsedBuffer(self) -> list:
+        collapsed = []
+        for y in range(self.height):
+            row = []
+            for x in range(self.width):
+                pixel = self.getPixel(x, y)
+                row.append(pixel)
+            collapsed.append(row)
+        return collapsed
+    
+    # Method to get the entire buffer as a 2D array of layer-arrays of RGBAPixel objects but blends every other row
+    # so
+    # Row1: (0,0,0,255),       (255,255,255,0)
+    # Row2: (255,255,255,128), (0,0,0,255)
+    # Row3: (255,0,0,255),     (0,255,0,255)
+    # becomes
+    # Row1~2: (0,0,0,255)~255,255,255,128), (255,255,255,0)~(0,0,0,255) => (127,127,127,255), (0,0,0,255)
+    # Row3:   (255,0,0,255),                (0,255,0,255)
+    # As we can see when uneven number of rows the last row is not blended
+    # We effectively half the height of the buffer blending every two rows together vertically
+    def getHalfheightCollapsedBuffer(self) -> list:
+        # Start by getting the collapsed buffer
+        collapsed = self.getCollapsedBuffer()
+
+        # Now blend every two rows together
+        halfheight = []
+        for y in range(0, self.height, 2):
+            row = []
+            for x in range(self.width):
+                topPixel = collapsed[y][x] # Always RGBA
+                if y + 1 < self.height:
+                    bottomPixel = collapsed[y + 1][x]
+                    blendedPixel = blendRGBAs([topPixel, bottomPixel])
+                else:
+                    blendedPixel = topPixel
+                row.append(blendedPixel)
+            halfheight.append(row)
+
+        return halfheight
+
+    # Method to get the entire buffer as a 2D array of layer-arrays of RGBPixel objects but duplicates every other row
+    # Effectively doubling the height of the buffer
+    def getDoubleheightCollapsedBuffer(self) -> list:
+        # Start by getting the collapsed buffer
+        collapsed = self.getCollapsedBuffer()
+
+        # Now duplicate every row
+        doubleheight = []
+        for y in range(self.height):
+            row = []
+            for x in range(self.width):
+                pixel = collapsed[y][x]
+                row.append(pixel)
+            doubleheight.append(row)
+            doubleheight.append(row)
+
+        return doubleheight
+    
+    def isOutOfBounds(self, x: int, y: int) -> bool:
+        return x < 0 or x >= self.width or y < 0 or y >= self.height
+
+    # Returns false if out of bounds else true
+    def fillArea(self, x: int, y: int, width: int, height: int, pixel: RGBAPixel):
+        if self.isOutOfBounds(x, y) or self.isOutOfBounds(x + width - 1, y + height - 1):
+            return false
+        for dy in range(height):
+            for dx in range(width):
+                self.setPixelLayer(x + dx, y + dy, [pixel])
+        return True
+
+    # Returns false if out of bounds else true
+    def fill(self, pixel: RGBAPixel):
+        return self.fillArea(0, 0, self.width, self.height, pixel)
+
+
+# Represents a cell of TermScreenBuffer which has a char field and a top and bottom RGBPixel, when char is None the two pixels are represented as a half-height block character '▀' where top is fg and bottom is bg
+# When text is not empty the two pixels are blended as the bg color and the char is rendered with specified char color
+class TermCell():
+    def __init__(self, char: str | None, charColor: RGBPixel | None, top: RGBPixel, bottom: RGBPixel):
+        self.char = char
+        self.charColor = charColor
+        self.top = top
+        self.bottom = bottom
+
+    def toANSIString(self) -> str:
+        # Turns fg bg into ANSI escape codes around the char
+        if self.char is None:
+            return f"\033[38;2;{self.top.r};{self.top.g};{self.top.b}m\033[48;2;{self.bottom.r};{self.bottom.g};{self.bottom.b}m▀\033[0m"
+        else:
+            return f"\033[38;2;{self.charColor.r};{self.charColor.g};{self.charColor.b}m\033[48;2;{self.bottom.r};{self.bottom.g};{self.bottom.b}m{self.char}\033[0m"
+
+class TermScreenBuffer():
+    # Takes a pixelBuffer and handles a textBuffer then on rendering combines both to RenderedTextCell objects
+
+    def __init__(self, pixelBuffer: BlendingLayeredPixelBuffer, respectAlpha = True):
+        self.width = pixelBuffer.width
+        self.height = pixelBuffer.height // 2
+        self.pixelBuffer = pixelBuffer
+        self.respectAlpha = respectAlpha
+        self.clear()
+
+    def _getPixelRGB(self, pixel: RGBAPixel) -> RGBPixel:
+        # if pixel is None return black
+        if pixel is None:
+            return RGBPixel(0, 0, 0)
+        if self.respectAlpha:
+            return pixel.toRGBRespectingAlpha()
+        else:
+            return pixel.toRGB()
+        
+    def clear(self):
+        self.textBuffer = []
+        for y in range(self.height):
+            row = []
+            for x in range(self.width):
+                topPixel = self.pixelBuffer.getPixel(x, y * 2)
+                # if topPixel is None default to black else call self._getPixelRGB(topPixel)
+                topPixelRGB = self._getPixelRGB(topPixel) if topPixel is not None else RGBPixel(0, 0, 0)
+                bottomPixel = self.pixelBuffer.getPixel(x, y * 2 + 1)
+                # if bottomPixel is None default to black else call self._getPixelRGB(bottomPixel)
+                bottomPixelRGB = self._getPixelRGB(bottomPixel) if bottomPixel is not None else RGBPixel(0, 0, 0)
+                cell = TermCell(None, None, topPixelRGB, bottomPixelRGB)
+                row.append(cell)
+            self.textBuffer.append(row)
+
+    def setTextCell(self, x: int, y: int, char: str, charColor: RGBPixel):
+        cell = self.textBuffer[y][x]
+        cell.char = char
+        cell.charColor = charColor
+        self.textBuffer[y][x] = cell
+
+    def clearTextCell(self, x: int, y: int):
+        topPixel = self.pixelBuffer.getPixel(x, y * 2)
+        bottomPixel = self.pixelBuffer.getPixel(x, y * 2 + 1)
+        cell = TermCell(None, None, self._getPixelRGB(topPixel), self._getPixelRGB(bottomPixel))
+        self.textBuffer[y][x] = cell
+
+    def updateCell(self, x: int, y: int):
+        cell = self.textBuffer[y][x]
+        topPixel = self.pixelBuffer.getPixel(x, y * 2)
+        bottomPixel = self.pixelBuffer.getPixel(x, y * 2 + 1)
+        cell.top = self._getPixelRGB(topPixel)
+        cell.bottom = self._getPixelRGB(bottomPixel)
+        self.textBuffer[y][x] = cell
+
+    def getRenderedCell(self, x: int, y: int) -> str:
+        cell = self.textBuffer[y][x]
+        return cell.toANSIString()
+
+    def getRenderedBuffer(self) -> str:
+        rendered = ""
+        for y in range(self.height):
+            row = ""
+            for x in range(self.width):
+                cell = self.textBuffer[y][x]
+                row += cell.toANSIString()
+            rendered += row + "\n"
+        return rendered
+
+    def placeStringAt(self, x: int, y: int, string: str, color: RGBPixel):
+        for i, char in enumerate(string):
+            self.setTextCell(x + i, y, char, color)
+
+    def clearArea(self, x: int, y: int, width: int, height: int):
+        for dy in range(height):
+            for dx in range(width):
+                self.clearTextCell(x + dx, y + dy)
+
+class TerminalDisplay():
+    # Manages a TermScreenBuffer and a BlendingLayeredPixelBuffer allowing setting text and pixels and onPixelset updates the TermScreenBuffer accordingly
+    def __init__(self, width: int, height: int, respectAlpha = True):
+        self.pixelBuffer = BlendingLayeredPixelBuffer(width, height * 2)
+        self.screenBuffer = TermScreenBuffer(self.pixelBuffer, respectAlpha)
+
+    def setTextOfCell(self, x: int, y: int, char: str, charColor: RGBPixel):
+        self.screenBuffer.setTextCell(x, y, char, charColor)
+
+    def clearTextOfCell(self, x: int, y: int):
+        self.screenBuffer.clearTextCell(x, y)
+
+    def getTextOfCell(self, x: int, y: int) -> TermCell:
+        return self.screenBuffer.textBuffer[y][x]
+
+    def placeStringAt(self, x: int, y: int, string: str, color: RGBPixel):
+        self.screenBuffer.placeStringAt(x, y, string, color)
+
+    def clearTextArea(self, x: int, y: int, width: int, height: int):
+        self.screenBuffer.clearArea(x, y, width, height)
+    
+    def getRenderedCell(self, x: int, y: int) -> str:
+        return self.screenBuffer.getRenderedCell(x, y)
+
+    def getRenderedBuffer(self) -> str:
+        return self.screenBuffer.getRenderedBuffer()
+
+    def setPixelAtLayer(self, x: int, y: int, layerIndex: int, pixel: RGBAPixel):
+        self.pixelBuffer.setPixelAtLayer(x, y, layerIndex, pixel)
+        # Update the corresponding TermCell
+        termY = y // 2
+        self.screenBuffer.updateCell(x, termY)
+
+    def getPixelLayer(self, x: int, y: int, layerIndex: int) -> RGBAPixel | None:
+        return self.pixelBuffer.getPixelLayer(x, y, layerIndex)
+
+    def appendToPixelLayer(self, x: int, y: int, pixel: RGBAPixel):
+        self.pixelBuffer.appendPixelLayer(x, y, pixel)
+        # Update the corresponding TermCell
+        termY = y // 2
+        self.screenBuffer.updateCell(x, termY)
+
+    def clearPixelLayer(self, x: int, y: int):
+        self.pixelBuffer.buffer[y][x] = [RGBAPixel(0, 0, 0, 255)]
+        # Update the corresponding TermCell
+        termY = y // 2
+        self.screenBuffer.updateCell(x, termY)
+
+    def getCollapsedPixel(self, x: int, y: int) -> RGBAPixel:
+        return self.pixelBuffer.getPixel(x, y)
+
+    def setCollapsedPixel(self, x: int, y: int, pixel: RGBAPixel):
+        #self.pixelBuffer.buffer[y][x] = [pixel]
+        self.pixelBuffer.setPixelLayer(x, y, [pixel])
+        # Update the corresponding TermCell
+        termY = y // 2
+        self.screenBuffer.updateCell(x, termY)
+
+    def fillPixels(self, pixel: RGBAPixel):
+        self.pixelBuffer.fill(pixel)
+        # Update all TermCells
+        for y in range(self.screenBuffer.height):
+            for x in range(self.screenBuffer.width):
+                self.screenBuffer.updateCell(x, y)
+
+    def fillPixelArea(self, x: int, y: int, width: int, height: int, pixel: RGBAPixel):
+        for dy in range(height):
+            for dx in range(width):
+                #self.pixelBuffer.buffer[y + dy][x + dx] = [pixel]
+                self.pixelBuffer.setPixelLayer(x + dx, y + dy, 0, pixel)
+                # Update the corresponding TermCell
+                termY = (y + dy) // 2
+                self.screenBuffer.updateCell(x + dx, termY)
+
+    def clearPixelArea(self, x: int, y: int, width: int, height: int):
+        for dy in range(height):
+            for dx in range(width):
+                #self.pixelBuffer.buffer[y + dy][x + dx] = [RGBAPixel(0, 0, 0, 255)]
+                self.pixelBuffer.setPixelLayer(x + dx, y + dy, 0, RGBAPixel(0, 0, 0, 255))
+                # Update the corresponding TermCell
+                termY = (y + dy) // 2
+                self.screenBuffer.updateCell(x + dx, termY)
+
+# Example usage:
+# 0. Imports
+import os
+import shutil
+
+# 1. Get the terminal size
+terminal_size = shutil.get_terminal_size((80, 20))
+
+# 2. Init a TerminalDisplay with that size
+term_display = TerminalDisplay(terminal_size.columns-2, terminal_size.lines)
+
+# 3. Set some pixels using fillArea
+red_pixel = RGBAPixel(255, 0, 0, 255)
+term_display.fillPixelArea(0, 0, 10, 10, red_pixel)
+
+# 4. Set some text
+white_color = RGBPixel(255, 255, 255)
+term_display.placeStringAt(0, 0, "Hello, World!", white_color)
+
+# 5. Render the buffer to the terminal
+os.system('cls' if os.name == 'nt' else 'clear')
+print(term_display.getRenderedBuffer())

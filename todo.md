@@ -1,0 +1,2 @@
+- All outline shapes are wrong they draw outside the shape, we wanted edges, not outline.
+- All 3D stuff have issues with non-planars we should probably build a proper 3D rasterizer so that coordinates can be unlocked to a different space. But this would break the interface so i dont know
