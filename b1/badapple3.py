@@ -1,5 +1,7 @@
 from termobjs import *
 
+from videoext import *
+
 # Example usage
 # 1. Use shutil to get terminal size
 import shutil
@@ -10,13 +12,13 @@ display = TermDisplayWithObjects(terminal_size.columns, terminal_size.lines)
 
 # 3. Add objects
 
-text = TextContainer("Video/GIF support! Showing: badapple_1div16.gif", RGBPixel(255, 255, 0)) # yellow text
+text = TextContainer("Video support! Showing: badapple.mp4", RGBPixel(255, 255, 0)) # yellow text
 textObjID = display.addTextObj(text, 0, 0)
 
-scaleFactor = 1
+scaleFactor = 2
 
-gif = GIFImageContainer(gifPath="badapple_1div16.gif", width=terminal_size.columns//scaleFactor, height=(terminal_size.lines * 2 // scaleFactor) - 2, pxScaleFactor=scaleFactor, printProgress=True)
-gifObjID = display.addPixelObj(gif, 0, 2)
+video = PreScaledVideoContainer(videoPath="badapple.mp4", width=terminal_size.columns//scaleFactor, height=(terminal_size.lines * 2 // scaleFactor) - 2, pxScaleFactor=scaleFactor, printProgress=True)
+videoObjID = display.addPixelObj(video, 0, 2)
 
 # 4. Test loop to render the display
 import os
@@ -37,7 +39,7 @@ while running:
         display.render(printAt00, trailingNewline=False)
 
         # 20 FPS
-        time.sleep(0.05)
+        #time.sleep(0.05)
     except KeyboardInterrupt:
         running = False
         # show cursor

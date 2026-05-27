@@ -39,7 +39,7 @@ while running:
         display.render(printAt00, trailingNewline=False)
 
         # 20 FPS
-        time.sleep(0.05)
+        #time.sleep(0.05)
     except KeyboardInterrupt:
         running = False
         # show cursor

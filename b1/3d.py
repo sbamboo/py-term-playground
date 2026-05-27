@@ -65,18 +65,18 @@ wireframe_face = WireframePolygon3D(
 wireframe_face_id = display.addPixelObj(wireframe_face, 0, 20)
 
 
-rectangle = WireframeRectangle3D(
-    ctx3d,
-    # v0 = BottomLeft, v1 = BottomRight, v2 = TopRight, v3 = TopLeft
-    Vector3(0, 0, -10),
-    Vector3(5, 0, -10),
-    Vector3(5, 5, -10),
-    Vector3(0, 5, -10),
-    1,
-    RGBAPixel(0, 0, 255, 255),
-    RGBAPixel(255, 255, 0, 255)
-)
-rectangle_id = display.addCompositeObj(rectangle, 0, 20)
+# rectangle = WireframeRectangle3D(
+#     ctx3d,
+#     # v0 = BottomLeft, v1 = BottomRight, v2 = TopRight, v3 = TopLeft
+#     Vector3(0, 0, -10),
+#     Vector3(5, 0, -10),
+#     Vector3(5, 5, -10),
+#     Vector3(0, 5, -10),
+#     1,
+#     RGBAPixel(0, 0, 255, 255),
+#     RGBAPixel(255, 255, 0, 255)
+# )
+# rectangle_id = display.addCompositeObj(rectangle, 0, 20)
 
 
 # 5. Render
